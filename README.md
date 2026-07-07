@@ -12,7 +12,7 @@
 - a **Monte Carlo engine** written in modern Fortran (the language was built for exactly this kind of number crunching),
 - a **local web UI** — served by an HTTP server *written in Fortran*, binding straight to libc sockets through `iso_c_binding`. No frameworks, no runtime, no JavaScript build step, no third-party code anywhere in the stack. The frontend is a single dependency-free HTML page compiled into the binary itself.
 
-![fortuna web UI](docs/screenshot.png)
+![fortuna web UI](https://github.com/bell-kevin/fortuna/blob/main/fortuna/docs/screenshot.png)
 
 Everything is free software under the **GNU AGPL-3.0**.
 
