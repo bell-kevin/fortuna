@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>fortuna — Monte Carlo wealth forecast</title>
+<style>
+  :root{
+    --paper:#edf2e9; --panel:#f7faf3; --ink:#1c2a20; --ink-soft:#48584c;
+    --rule:#c2d1bd; --rule-soft:#dbe5d4; --green:#186b3f; --green-deep:#0e4d2c;
+    --red:#b23a26; --amber:#9a6a10;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--paper); color:var(--ink); font-family:var(--mono);
+    font-size:14px; line-height:1.45;
+    background-image:repeating-linear-gradient(to bottom, transparent 0 27px, rgba(24,107,63,.05) 27px 28px);
+  }
+  a{color:var(--green-deep)}
+  .wrap{max-width:1180px;margin:0 auto;padding:20px 16px 48px}
+
+  /* coding-form header strip */
+  header.form-strip{
+    border:2px solid var(--ink); background:var(--panel);
+    display:flex; flex-wrap:wrap; align-items:stretch; margin-bottom:20px;
+  }
+  .strip-cell{padding:10px 14px; border-right:1px solid var(--ink)}
+  .strip-cell:last-child{border-right:none}
+  .strip-cell .lbl{font-size:10px; letter-spacing:.12em; color:var(--ink-soft); text-transform:uppercase}
+  .strip-cell .val{font-size:13px; font-weight:700}
+  .brand{display:flex; align-items:center; gap:12px; padding:10px 18px; border-right:2px solid var(--ink)}
+  .brand h1{
+    margin:0; font-size:30px; font-weight:800; letter-spacing:.28em;
+    color:var(--green-deep); text-transform:uppercase;
+  }
+  .brand .f77{
+    border:1.5px solid var(--green-deep); color:var(--green-deep); font-size:10px;
+    padding:3px 6px; letter-spacing:.1em; align-self:center;
+  }
+  .grow{flex:1 1 auto}
+
+  main{display:grid; grid-template-columns:340px 1fr; gap:20px}
+  @media (max-width:900px){ main{grid-template-columns:1fr} }
+
+  /* input panel */
+  form.panel{
+    border:1.5px solid var(--ink); background:var(--panel); padding:14px 14px 16px;
+    align-self:start;
+  }
+  fieldset{border:none; border-top:1px solid var(--rule); margin:0 0 4px; padding:10px 0 6px}
+  fieldset:first-of-type{border-top:none; padding-top:2px}
+  legend{
+    padding:0 6px 0 0; font-size:10px; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--green-deep); font-weight:700;
+  }
+  .row{display:flex; align-items:center; justify-content:space-between; gap:10px; margin:7px 0}
+  .row label{flex:1 1 auto; color:var(--ink-soft)}
+  .row input{
+    width:110px; padding:5px 7px; font:inherit; color:var(--ink); text-align:right;
+    background:#fff; border:1px solid var(--rule); border-radius:0;
+  }
+  .row input:focus{outline:2px solid var(--green); outline-offset:1px}
+  details{margin-top:6px}
+  details summary{
+    cursor:pointer; font-size:10px; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--ink-soft);
+  }
+  .actions{display:flex; flex-direction:column; gap:8px; margin-top:14px}
+  button{
+    font:inherit; font-weight:700; letter-spacing:.06em; padding:10px 12px;
+    border:1.5px solid var(--green-deep); cursor:pointer; border-radius:0;
+  }
+  button.primary{background:var(--green-deep); color:#fff}
+  button.primary:hover{background:var(--green)}
+  button.secondary{background:transparent; color:var(--green-deep)}
+  button.secondary:hover{background:rgba(24,107,63,.08)}
+  button:focus-visible{outline:2px solid var(--ink); outline-offset:2px}
+  button:disabled{opacity:.55; cursor:wait}
+  .solve-row{display:flex; align-items:center; gap:8px}
+  .solve-row input{width:64px; padding:5px 7px; font:inherit; text-align:right;
+    border:1px solid var(--rule); background:#fff}
+  .hint{font-size:11px; color:var(--ink-soft); margin-top:10px}
+
+  /* results */
+  .results{display:flex; flex-direction:column; gap:20px; min-width:0}
+  .card{border:1.5px solid var(--ink); background:var(--panel); padding:16px 18px}
+  .stat-top{display:flex; flex-wrap:wrap; align-items:baseline; gap:8px 18px}
+  .big{font-size:52px; font-weight:800; line-height:1}
+  .big.good{color:var(--green-deep)} .big.mid{color:var(--amber)} .big.bad{color:var(--red)}
+  .verdict{font-size:14px; color:var(--ink-soft)}
+  .meter{height:10px; border:1px solid var(--ink); margin-top:12px; background:#fff}
+  .meter > div{height:100%; background:var(--green-deep); width:0%}
+  .stat-note{font-size:11px; color:var(--ink-soft); margin-top:8px}
+  .solved{
+    margin-top:12px; padding:10px 12px; border:1.5px dashed var(--green-deep);
+    color:var(--green-deep); font-weight:700; display:none;
+  }
+  #chartbox{position:relative}
+  canvas{display:block; width:100%; height:380px}
+  .legend{display:flex; flex-wrap:wrap; gap:14px; font-size:11px; color:var(--ink-soft); margin-top:8px}
+  .key{display:inline-block; width:14px; height:9px; margin-right:5px; vertical-align:baseline}
+  .k-outer{background:rgba(24,107,63,.15)} .k-inner{background:rgba(24,107,63,.34)}
+  .k-med{background:var(--green-deep); height:3px; vertical-align:middle}
+  .tip{
+    position:absolute; pointer-events:none; display:none; background:var(--ink); color:#f3f7ef;
+    font-size:11px; padding:7px 9px; white-space:pre; z-index:2;
+  }
+  .grid4{display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:0}
+  .grid4 .cell{padding:12px 14px; border-right:1px solid var(--rule)}
+  .grid4 .cell:last-child{border-right:none}
+  .cell .lbl{font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-soft)}
+  .cell .val{font-size:19px; font-weight:800; margin-top:3px}
+  .error{
+    display:none; border:1.5px solid var(--red); color:var(--red); background:#fdf2ef;
+    padding:10px 14px; font-weight:700;
+  }
+  footer{margin-top:28px; font-size:11px; color:var(--ink-soft); border-top:1px solid var(--rule); padding-top:12px}
+  @media (prefers-reduced-motion:no-preference){
+    .card{transition:opacity .25s ease}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="form-strip" role="banner">
+    <div class="brand">
+      <h1>Fortuna</h1>
+      <span class="f77">FTN</span>
+    </div>
+    <div class="strip-cell"><div class="lbl">Program</div><div class="val">Monte Carlo wealth forecast</div></div>
+    <div class="strip-cell"><div class="lbl">Units</div><div class="val">Today's dollars (real terms)</div></div>
+    <div class="strip-cell grow"><div class="lbl">Backend</div><div class="val">100% Fortran, zero dependencies</div></div>
+  </header>
+
+  <main>
+    <form class="panel" id="f" autocomplete="off">
+      <fieldset>
+        <legend>You</legend>
+        <div class="row"><label for="age">Current age</label><input id="age" type="number" value="30" min="0" max="120" step="1"></div>
+        <div class="row"><label for="retire">Retirement age</label><input id="retire" type="number" value="65" min="0" max="120" step="1"></div>
+        <div class="row"><label for="end">Plan until age</label><input id="end" type="number" value="95" min="1" max="130" step="1"></div>
+      </fieldset>
+      <fieldset>
+        <legend>Saving</legend>
+        <div class="row"><label for="balance">Invested savings, $</label><input id="balance" type="number" value="25000" min="0" step="1000"></div>
+        <div class="row"><label for="monthly">Monthly contribution, $</label><input id="monthly" type="number" value="500" min="0" step="50"></div>
+        <div class="row"><label for="growth">Contribution growth, %/yr</label><input id="growth" type="number" value="1" step="0.1"></div>
+      </fieldset>
+      <fieldset>
+        <legend>Market (real, after inflation)</legend>
+        <div class="row"><label for="return">Expected return, %/yr</label><input id="return" type="number" value="5" step="0.1"></div>
+        <div class="row"><label for="vol">Volatility, %/yr</label><input id="vol" type="number" value="15" step="0.5"></div>
+      </fieldset>
+      <fieldset>
+        <legend>Retirement</legend>
+        <div class="row"><label for="spend">Spending, $/yr</label><input id="spend" type="number" value="40000" min="0" step="1000"></div>
+        <div class="row"><label for="pension">Pension or Social Security, $/mo</label><input id="pension" type="number" value="0" min="0" step="50"></div>
+        <div class="row"><label for="pension_age">Pension starts at age</label><input id="pension_age" type="number" value="67" min="0" max="130" step="1"></div>
+      </fieldset>
+      <details>
+        <summary>Engine</summary>
+        <div class="row"><label for="paths">Simulated futures</label><input id="paths" type="number" value="5000" min="100" max="200000" step="100"></div>
+        <div class="row"><label for="seed">Seed (0 = random)</label><input id="seed" type="number" value="0" min="0" step="1"></div>
+      </details>
+      <div class="actions">
+        <button type="button" class="primary" id="run">Run simulation</button>
+        <div class="solve-row">
+          <button type="button" class="secondary" id="solve">Find safe spending</button>
+          <label for="target">at</label>
+          <input id="target" type="number" value="90" min="50" max="99" step="1" aria-label="success target, percent">
+          <span>%</span>
+        </div>
+      </div>
+      <p class="hint">A modelling toy, not financial advice. Returns are drawn from a
+      lognormal model — real markets have fatter tails.</p>
+    </form>
+
+    <section class="results">
+      <div class="error" id="err" role="alert"></div>
+
+      <div class="card" id="statcard">
+        <div class="stat-top">
+          <div class="big" id="rate">—</div>
+          <div class="verdict" id="verdict">Set your plan, then run the simulation.</div>
+        </div>
+        <div class="meter" aria-hidden="true"><div id="meterfill"></div></div>
+        <div class="stat-note" id="statnote">Success = the portfolio is never depleted in retirement.</div>
+        <div class="solved" id="solvedbox"></div>
+      </div>
+
+      <div class="card">
+        <div id="chartbox">
+          <canvas id="chart" aria-label="fan chart of portfolio balance percentiles by age" role="img"></canvas>
+          <div class="tip" id="tip"></div>
+        </div>
+        <div class="legend">
+          <span><span class="key k-outer"></span>5th–95th percentile</span>
+          <span><span class="key k-inner"></span>25th–75th percentile</span>
+          <span><span class="key k-med"></span>Median</span>
+        </div>
+      </div>
+
+      <div class="card grid4">
+        <div class="cell"><div class="lbl">Median at retirement</div><div class="val" id="s_ret">—</div></div>
+        <div class="cell"><div class="lbl">Median at plan end</div><div class="val" id="s_end">—</div></div>
+        <div class="cell"><div class="lbl">5th percentile at end</div><div class="val" id="s_p05">—</div></div>
+        <div class="cell"><div class="lbl">Retirement spend used</div><div class="val" id="s_spend">—</div></div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    fortuna is free software under the
+    <a href="https://www.gnu.org/licenses/agpl-3.0.html">GNU AGPL-3.0</a>.
+    The page you are reading was served by an HTTP server written in Fortran.
+  </footer>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var $ = function(id){ return document.getElementById(id); };
+  var last = null;
+
+  function fmtMoney(x){
+    var a = Math.abs(x), s = x < 0 ? "-$" : "$";
+    if (a >= 1e9) return s + (a/1e9).toFixed(2) + "B";
+    if (a >= 1e6) return s + (a/1e6).toFixed(2) + "M";
+    if (a >= 1e4) return s + Math.round(a/1e3) + "k";
+    return s + Math.round(a).toLocaleString("en-US");
+  }
+  function fmtAxis(x){
+    if (x >= 1e9) return "$" + (x/1e9).toFixed(1).replace(/\.0$/,"") + "B";
+    if (x >= 1e6) return "$" + (x/1e6).toFixed(1).replace(/\.0$/,"") + "M";
+    if (x >= 1e3) return "$" + Math.round(x/1e3) + "k";
+    return "$" + Math.round(x);
+  }
+
+  function params(solve){
+    var ids = ["age","retire","end","balance","monthly","growth","return",
+               "vol","spend","pension","pension_age","paths","seed"];
+    var p = new URLSearchParams();
+    ids.forEach(function(id){ p.set(id, $(id).value || "0"); });
+    if (solve){ p.set("solve","1"); p.set("target", $("target").value || "90"); }
+    return p;
+  }
+
+  function setBusy(b){
+    $("run").disabled = b; $("solve").disabled = b;
+    $("run").textContent = b ? "Running…" : "Run simulation";
+  }
+
+  function run(solve){
+    setBusy(true);
+    $("err").style.display = "none";
+    fetch("/api/simulate", {
+      method:"POST",
+      headers:{"Content-Type":"application/x-www-form-urlencoded"},
+      body: params(solve).toString()
+    })
+    .then(function(r){ return r.json().then(function(j){ return {ok:r.ok, j:j}; }); })
+    .then(function(r){
+      if (!r.ok || r.j.error){ showError(r.j.error || "The simulation failed."); return; }
+      last = r.j;
+      render(r.j, solve);
+    })
+    .catch(function(){ showError("Could not reach the fortuna server. Is it still running?"); })
+    .then(function(){ setBusy(false); });
+  }
+
+  function showError(msg){
+    var e = $("err");
+    e.textContent = msg;
+    e.style.display = "block";
+  }
+
+  function verdictFor(r){
+    if (r >= 0.95) return "On track in nearly every simulated future.";
+    if (r >= 0.85) return "Solid, with room for a run of bad markets.";
+    if (r >= 0.70) return "Workable, but sensitive to rough decades.";
+    if (r >= 0.50) return "Coin-flip territory. Adjust something.";
+    return "This plan runs out of money in most futures.";
+  }
+
+  function render(d, solved){
+    var pctv = (100*d.success_rate);
+    var big = $("rate");
+    big.textContent = (pctv >= 99.95 ? "100" : pctv.toFixed(1)) + "%";
+    big.className = "big " + (d.success_rate >= 0.85 ? "good" : d.success_rate >= 0.70 ? "mid" : "bad");
+    $("verdict").textContent = verdictFor(d.success_rate);
+    $("meterfill").style.width = Math.max(0, Math.min(100, pctv)) + "%";
+    $("meterfill").style.background = d.success_rate >= 0.85 ? "var(--green-deep)"
+      : d.success_rate >= 0.70 ? "var(--amber)" : "var(--red)";
+    $("statnote").textContent = "Success = the portfolio is never depleted in retirement. "
+      + d.paths.toLocaleString("en-US") + " futures simulated.";
+
+    var sb = $("solvedbox");
+    if (solved && d.solved_spend !== undefined){
+      sb.style.display = "block";
+      sb.textContent = "Highest sustainable spending at a "
+        + Math.round(100*d.solved_target) + "% target: "
+        + fmtMoney(d.solved_spend) + "/yr  (" + fmtMoney(d.solved_spend/12) + "/mo)";
+    } else {
+      sb.style.display = "none";
+    }
+
+    var n = d.ages.length - 1;
+    $("s_ret").textContent = fmtMoney(d.median_at_retirement);
+    $("s_end").textContent = fmtMoney(d.median_end);
+    $("s_p05").textContent = fmtMoney(d.p05[n]);
+    $("s_spend").textContent = fmtMoney(d.annual_spend) + "/yr";
+
+    drawChart(d);
+  }
+
+  /* ---------------- fan chart ---------------- */
+  var canvas = $("chart"), tip = $("tip");
+  var geom = null;
+
+  function drawChart(d){
+    var dpr = window.devicePixelRatio || 1;
+    var W = canvas.clientWidth, H = canvas.clientHeight;
+    canvas.width = Math.round(W*dpr); canvas.height = Math.round(H*dpr);
+    var ctx = canvas.getContext("2d");
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.clearRect(0,0,W,H);
+
+    var padL = 62, padR = 14, padT = 14, padB = 30;
+    var iw = W - padL - padR, ih = H - padT - padB;
+    var a0 = d.ages[0], a1 = d.ages[d.ages.length-1];
+    var ymax = 0;
+    for (var i=0;i<d.p95.length;i++) if (d.p95[i] > ymax) ymax = d.p95[i];
+    ymax = niceCeil(ymax || 1);
+
+    var X = function(age){ return padL + iw*(age-a0)/(a1-a0); };
+    var Y = function(v){ return padT + ih*(1 - v/ymax); };
+    geom = {X:X, Y:Y, padL:padL, padT:padT, iw:iw, ih:ih, a0:a0, a1:a1, d:d};
+
+    var css = getComputedStyle(document.documentElement);
+    var ink = css.getPropertyValue("--ink").trim();
+    var soft = css.getPropertyValue("--ink-soft").trim();
+    var rule = css.getPropertyValue("--rule-soft").trim();
+    var green = css.getPropertyValue("--green-deep").trim();
+    var red = css.getPropertyValue("--red").trim();
+
+    /* coding-form column ruling: a light vertical line every year,
+       heavier every 5 years */
+    for (var age = Math.ceil(a0); age <= a1; age++){
+      ctx.beginPath();
+      ctx.strokeStyle = rule;
+      ctx.lineWidth = (age % 5 === 0) ? 1.2 : 0.5;
+      ctx.moveTo(X(age), padT); ctx.lineTo(X(age), padT+ih);
+      ctx.stroke();
+      if (age % 5 === 0){
+        ctx.fillStyle = soft; ctx.font = "11px " + css.getPropertyValue("--mono");
+        ctx.textAlign = "center";
+        ctx.fillText(String(age), X(age), H-10);
+      }
+    }
+    /* y ticks */
+    var ticks = 5;
+    for (var t=0;t<=ticks;t++){
+      var v = ymax*t/ticks, y = Y(v);
+      ctx.beginPath(); ctx.strokeStyle = rule; ctx.lineWidth = 0.8;
+      ctx.moveTo(padL, y); ctx.lineTo(padL+iw, y); ctx.stroke();
+      ctx.fillStyle = soft; ctx.font = "11px " + css.getPropertyValue("--mono");
+      ctx.textAlign = "right";
+      ctx.fillText(fmtAxis(v), padL-8, y+4);
+    }
+
+    band(ctx, d.ages, d.p05, d.p95, "rgba(24,107,63,0.15)", X, Y);
+    band(ctx, d.ages, d.p25, d.p75, "rgba(24,107,63,0.30)", X, Y);
+
+    ctx.beginPath();
+    ctx.strokeStyle = green; ctx.lineWidth = 2.2;
+    line(ctx, d.ages, d.p50, X, Y);
+    ctx.stroke();
+
+    /* retirement marker */
+    if (d.retire_age > a0 && d.retire_age < a1){
+      ctx.save();
+      ctx.setLineDash([5,4]);
+      ctx.strokeStyle = red; ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(X(d.retire_age), padT); ctx.lineTo(X(d.retire_age), padT+ih);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = red; ctx.font = "11px " + css.getPropertyValue("--mono");
+      ctx.textAlign = "left";
+      ctx.fillText("retire", X(d.retire_age)+5, padT+12);
+      ctx.restore();
+    }
+
+    /* frame */
+    ctx.strokeStyle = ink; ctx.lineWidth = 1.4;
+    ctx.strokeRect(padL, padT, iw, ih);
+  }
+
+  function band(ctx, ages, lo, hi, fill, X, Y){
+    ctx.beginPath();
+    for (var i=0;i<ages.length;i++){
+      var x = X(ages[i]), y = Y(hi[i]);
+      if (i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    }
+    for (var j=ages.length-1;j>=0;j--) ctx.lineTo(X(ages[j]), Y(lo[j]));
+    ctx.closePath();
+    ctx.fillStyle = fill;
+    ctx.fill();
+  }
+  function line(ctx, ages, v, X, Y){
+    for (var i=0;i<ages.length;i++){
+      var x = X(ages[i]), y = Y(v[i]);
+      if (i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    }
+  }
+  function niceCeil(v){
+    var m = Math.pow(10, Math.floor(Math.log10(v)));
+    var f = v/m;
+    var nf = f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10;
+    return nf*m;
+  }
+
+  canvas.addEventListener("mousemove", function(ev){
+    if (!geom || !last){ return; }
+    var r = canvas.getBoundingClientRect();
+    var mx = ev.clientX - r.left;
+    var age = geom.a0 + (mx - geom.padL)/geom.iw*(geom.a1-geom.a0);
+    var i = Math.round(age - geom.a0);
+    if (i < 0 || i >= last.ages.length || mx < geom.padL || mx > geom.padL+geom.iw){
+      tip.style.display = "none"; drawChart(last); return;
+    }
+    drawChart(last);
+    var ctx = canvas.getContext("2d");
+    var x = geom.X(last.ages[i]);
+    ctx.beginPath();
+    ctx.strokeStyle = "#1c2a20"; ctx.lineWidth = 1;
+    ctx.moveTo(x, geom.padT); ctx.lineTo(x, geom.padT+geom.ih);
+    ctx.stroke();
+    tip.style.display = "block";
+    tip.textContent = "age " + Math.round(last.ages[i])
+      + "\n95th  " + fmtMoney(last.p95[i])
+      + "\nmed   " + fmtMoney(last.p50[i])
+      + "\n5th   " + fmtMoney(last.p05[i]);
+    var tx = x + 12;
+    if (tx > r.width - 130) tx = x - 132;
+    tip.style.left = tx + "px";
+    tip.style.top = (geom.padT + 8) + "px";
+  });
+  canvas.addEventListener("mouseleave", function(){
+    tip.style.display = "none";
+    if (last) drawChart(last);
+  });
+  window.addEventListener("resize", function(){ if (last) drawChart(last); });
+
+  $("run").addEventListener("click", function(){ run(false); });
+  $("solve").addEventListener("click", function(){ run(true); });
+  run(false);
+})();
+</script>
+</body>
+</html>
