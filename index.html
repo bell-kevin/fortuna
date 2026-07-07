@@ -4,6 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>fortuna — Monte Carlo wealth forecast</title>
+<meta name="description" content="Will my money last? Simulate thousands of market futures in your browser. Free software; your numbers never leave this page.">
+<link rel="canonical" href="https://montecarlo.you/">
+<meta property="og:title" content="fortuna — Monte Carlo wealth forecast">
+<meta property="og:description" content="Will my money last? Simulate thousands of market futures in your browser. Nothing is uploaded anywhere.">
+<meta property="og:url" content="https://montecarlo.you/">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230e4d2c'/%3E%3Ctext x='16' y='23' font-family='monospace' font-size='20' font-weight='bold' fill='%23edf2e9' text-anchor='middle'%3EF%3C/text%3E%3C/svg%3E">
 <style>
   :root{
     --paper:#edf2e9; --panel:#f7faf3; --ink:#1c2a20; --ink-soft:#48584c;
@@ -132,7 +138,7 @@
     </div>
     <div class="strip-cell"><div class="lbl">Program</div><div class="val">Monte Carlo wealth forecast</div></div>
     <div class="strip-cell"><div class="lbl">Units</div><div class="val">Today's dollars (real terms)</div></div>
-    <div class="strip-cell grow"><div class="lbl">Backend</div><div class="val">100% Fortran, zero dependencies</div></div>
+    <div class="strip-cell grow"><div class="lbl">Engine</div><div class="val">Runs in your browser — nothing is uploaded</div></div>
   </header>
 
   <main>
@@ -215,7 +221,10 @@
   <footer>
     fortuna is free software under the
     <a href="https://www.gnu.org/licenses/agpl-3.0.html">GNU AGPL-3.0</a>.
-    The page you are reading was served by an HTTP server written in Fortran.
+    This is the static build: the Monte Carlo engine runs entirely in your
+    browser, so your numbers never leave this page. The full-stack version
+    &mdash; a CLI and an HTTP server written in Fortran &mdash; lives at
+    <a href="https://github.com/bell-kevin/fortuna">github.com/bell-kevin/fortuna</a>.
   </footer>
 </div>
 
@@ -253,22 +262,197 @@
     $("run").textContent = b ? "Running…" : "Run simulation";
   }
 
+  /* ------------------------------------------------------------------ *
+   *  The Monte Carlo engine, ported line-for-line from fortuna's        *
+   *  src/fortuna_sim.f90 so this page works on static hosting.          *
+   *  Same model, same defaults, same solver.                            *
+   * ------------------------------------------------------------------ */
+
+  function mulberry32(seed){
+    var a = (seed >>> 0) || 1;
+    return function(){
+      a = (a + 0x6D2B79F5) | 0;
+      var t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function gaussian(rand){           // Box-Muller with spare caching
+    var spare = null;
+    return function(){
+      if (spare !== null){ var s = spare; spare = null; return s; }
+      var u1, u2, r, th;
+      do { u1 = rand(); } while (u1 <= 0);
+      u2 = rand();
+      r = Math.sqrt(-2*Math.log(u1)); th = 2*Math.PI*u2;
+      spare = r*Math.sin(th);
+      return r*Math.cos(th);
+    };
+  }
+  function pctSorted(v, q){          // linear-interpolated percentile
+    var n = v.length;
+    if (n === 1) return v[0];
+    var pos = q*(n - 1), lo = Math.floor(pos);
+    if (lo >= n - 1) return v[n - 1];
+    var f = pos - lo;
+    return v[lo]*(1 - f) + v[lo + 1]*f;
+  }
+
+  function validateConfig(cfg){      // mirrors validate_config()
+    if (!(cfg.current_age >= 0 && cfg.current_age <= 120))
+      return "current age must be between 0 and 120";
+    if (!(cfg.end_age > cfg.current_age))
+      return "plan-until age must be greater than current age";
+    if (cfg.end_age > 130) return "plan-until age must be 130 or less";
+    if (!(cfg.annual_return > -0.99 && cfg.annual_return <= 1.0))
+      return "expected return must be between -99% and 100%";
+    if (!(cfg.annual_vol >= 0 && cfg.annual_vol <= 2.0))
+      return "volatility must be between 0% and 200%";
+    if (cfg.annual_spend < 0 || cfg.monthly_contrib < 0 ||
+        cfg.balance0 < 0 || cfg.pension_monthly < 0)
+      return "dollar amounts must not be negative";
+    cfg.retire_age = Math.min(Math.max(cfg.retire_age, cfg.current_age), cfg.end_age);
+    cfg.n_paths = Math.min(Math.max(cfg.n_paths, 100), 200000);
+    return "";
+  }
+
+  function runSimulation(cfg){       // mirrors run_simulation()
+    var totalYears = Math.max(1, Math.round(cfg.end_age - cfg.current_age));
+    var months = totalYears*12, np = cfg.n_paths;
+    var mu_m  = Math.log(1 + cfg.annual_return)/12 - 0.5*cfg.annual_vol*cfg.annual_vol/12;
+    var sig_m = cfg.annual_vol/Math.sqrt(12);
+    var spendM = cfg.annual_spend/12;
+    var seed = cfg.seed > 0 ? cfg.seed
+                            : ((Date.now() ^ (Math.random()*4294967296)) >>> 0);
+    var randn = gaussian(mulberry32(seed));
+
+    var cols = [];
+    for (var y = 0; y <= totalYears; y++) cols.push(new Float64Array(np));
+
+    var nFail = 0, meanEnd = 0;
+    for (var p = 0; p < np; p++){
+      var bal = cfg.balance0, failed = false;
+      cols[0][p] = bal;
+      for (var m = 1; m <= months; m++){
+        var ageM = cfg.current_age + (m - 1)/12;
+        var yearIdx = ((m - 1)/12)|0;
+        bal = bal*Math.exp(mu_m + sig_m*randn());
+        if (ageM < cfg.retire_age){
+          bal += cfg.monthly_contrib*Math.pow(1 + cfg.contrib_growth, yearIdx);
+        } else {
+          bal -= spendM;
+        }
+        if (ageM >= cfg.pension_age) bal += cfg.pension_monthly;
+        if (bal <= 0){ bal = 0; if (ageM >= cfg.retire_age) failed = true; }
+        if (m % 12 === 0) cols[yearIdx + 1][p] = bal;
+      }
+      if (failed) nFail++;
+      meanEnd += cols[totalYears][p];
+    }
+    meanEnd /= np;
+
+    var ages=[], p05=[], p25=[], p50=[], p75=[], p95=[];
+    for (y = 0; y <= totalYears; y++){
+      ages.push(cfg.current_age + y);
+      cols[y].sort();
+      p05.push(pctSorted(cols[y], 0.05));
+      p25.push(pctSorted(cols[y], 0.25));
+      p50.push(pctSorted(cols[y], 0.50));
+      p75.push(pctSorted(cols[y], 0.75));
+      p95.push(pctSorted(cols[y], 0.95));
+    }
+    var retireYear = Math.min(Math.max(Math.round(cfg.retire_age - cfg.current_age), 0), totalYears);
+    return {
+      success_rate: 1 - nFail/np,
+      ages: ages, p05: p05, p25: p25, p50: p50, p75: p75, p95: p95,
+      median_end: p50[totalYears], mean_end: meanEnd,
+      median_at_retirement: p50[retireYear]
+    };
+  }
+
+  function solveSafeSpend(cfg, target){   // mirrors solve_safe_spend()
+    var c = Object.assign({}, cfg);
+    c.n_paths = Math.min(cfg.n_paths, 4000);
+    if (c.seed <= 0) c.seed = 20260707;
+
+    var lo = 0, hi = Math.max(cfg.annual_spend, 20000), it, r;
+    for (it = 0; it < 24; it++){          // grow hi until it fails the target
+      c.annual_spend = hi;
+      r = runSimulation(c);
+      if (r.success_rate < target || hi > 1e9) break;
+      lo = hi; hi = hi*2;
+    }
+    for (it = 0; it < 32; it++){          // bisect
+      if (hi - lo < 50) break;
+      var mid = 0.5*(lo + hi);
+      c.annual_spend = mid;
+      r = runSimulation(c);
+      if (r.success_rate >= target) lo = mid; else hi = mid;
+    }
+    c.annual_spend = lo;
+    r = runSimulation(c);
+    return { spend: lo, achieved: r.success_rate };
+  }
+
+  function num(p, k, d){
+    var v = parseFloat(p.get(k));
+    return isFinite(v) ? v : d;
+  }
+
+  function simulateRequest(p){       // same contract as POST /api/simulate
+    var cfg = {
+      current_age:     num(p, "age", 30),
+      retire_age:      num(p, "retire", 65),
+      end_age:         num(p, "end", 95),
+      balance0:        num(p, "balance", 25000),
+      monthly_contrib: num(p, "monthly", 500),
+      contrib_growth:  num(p, "growth", 1)/100,
+      annual_return:   num(p, "return", 5)/100,
+      annual_vol:      num(p, "vol", 15)/100,
+      annual_spend:    num(p, "spend", 40000),
+      pension_monthly: num(p, "pension", 0),
+      pension_age:     num(p, "pension_age", 67),
+      n_paths:         Math.round(num(p, "paths", 5000)),
+      seed:            Math.round(num(p, "seed", 0))
+    };
+    var err = validateConfig(cfg);
+    if (err) return { error: err };
+
+    var solved = null;
+    if (p.get("solve") === "1"){
+      var target = num(p, "target", 90)/100;
+      target = Math.min(Math.max(target, 0.01), 0.999);
+      solved = solveSafeSpend(cfg, target);
+      cfg.annual_spend = solved.spend;
+      solved.target = target;
+    }
+
+    var res = runSimulation(cfg);
+    res.retire_age = cfg.retire_age;
+    res.annual_spend = cfg.annual_spend;
+    res.paths = cfg.n_paths;
+    if (solved){
+      res.solved_spend = solved.spend;
+      res.solved_target = solved.target;
+      res.solved_achieved = solved.achieved;
+    }
+    return res;
+  }
+
   function run(solve){
     setBusy(true);
     $("err").style.display = "none";
-    fetch("/api/simulate", {
-      method:"POST",
-      headers:{"Content-Type":"application/x-www-form-urlencoded"},
-      body: params(solve).toString()
-    })
-    .then(function(r){ return r.json().then(function(j){ return {ok:r.ok, j:j}; }); })
-    .then(function(r){
-      if (!r.ok || r.j.error){ showError(r.j.error || "The simulation failed."); return; }
-      last = r.j;
-      render(r.j, solve);
-    })
-    .catch(function(){ showError("Could not reach the fortuna server. Is it still running?"); })
-    .then(function(){ setBusy(false); });
+    var p = params(solve);
+    setTimeout(function(){
+      try {
+        var d = simulateRequest(p);
+        if (d.error){ showError(d.error); }
+        else { last = d; render(d, solve); }
+      } catch (ex){
+        showError("The simulation failed: " + ex.message);
+      }
+      setBusy(false);
+    }, 30);
   }
 
   function showError(msg){
