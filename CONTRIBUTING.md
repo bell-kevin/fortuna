@@ -1,49 +1,33 @@
-Thank you for your interest in contributing to this project!
+# Contributing to fortuna
 
-This project welcomes contributions from anyone, regardless of skill level or experience. Here are some guidelines to help you get started:
+Thanks for considering it. The bar is low and the codebase is small on purpose.
 
-## How to contribute
+## Ground rules
 
-    1. Fork the repository
-    2. Make your changes
-    3. Submit a pull request
+- **License.** All contributions are accepted under AGPL-3.0-or-later, the
+  project's license. New source files should carry the
+  `! SPDX-License-Identifier: AGPL-3.0-or-later` header.
+- **No dependencies.** The whole point of fortuna is that it builds with
+  `gfortran` and `make` and nothing else. PRs that add third-party libraries,
+  frontend frameworks, or network calls to outside services will be declined.
+- **Standard Fortran.** Code must compile warning-clean with
+  `gfortran -std=f2018 -Wall -Wextra`. `make test` must pass.
+- **The web UI source is `web/index.html`.** Never edit
+  `src/fortuna_web_assets.f90` by hand; run `make webassets` after changing
+  the HTML and commit both files.
 
-### Fork the repository
+## Workflow
 
-To contribute to this project, you'll first need to create a copy of the repository in your own GitHub account. This is called "forking" the repository.
+1. Fork, branch, hack.
+2. `make && make test` (add a test in `test/check.f90` if you changed behavior).
+3. Open a PR that explains *why*, not just *what*.
 
-To fork the repository, click the "Fork" button in the upper-right corner of the repository page. This will create a new copy of the repository in your account.
+## Good first issues
 
-### Make your changes
-
-Once you've forked the repository, you can make changes to the code or documentation.
-
-Before you start making changes, be sure to read the project's README file and any relevant documentation to get an understanding of the project's goals and guidelines.
-
-When making changes, be sure to follow the project's coding style and guidelines. If you're unsure about something, feel free to open an issue or ask for help in the project's discussion forum.
-
-### Submit a pull request
-
-When you're ready to submit your changes, you'll need to create a pull request (PR).
-
-To create a PR, go to the original repository and click the "New pull request" button. You'll be asked to select the branch containing your changes and provide a brief description of what you changed.
-
-Once you've submitted your PR, the project maintainers will review your changes and provide feedback. If everything looks good, your changes will be merged into the project.
-
-### Guidelines for contributions
-
-Here are some general guidelines for contributing to this project:
-
-    - Be respectful and professional in all interactions with other contributors.
-    
-    - Follow the project's coding style and guidelines.
-    
-    - Test your changes thoroughly before submitting a PR.
-    
-    - Provide clear and detailed descriptions of your changes.
-    
-    - Be open to feedback and willing to make changes based on feedback.
-    
-    - If you're unsure about something, don't hesitate to ask for help.
-
-Thank you for your interest in contributing to this project! We look forward to working with you.
+- BSD/macOS socket constants in `fortuna_http.f90` (they differ from Linux;
+  a small platform detection would make `serve` portable).
+- Historical bootstrap sampling as an alternative to the lognormal model
+  (load a user-supplied CSV of annual real returns).
+- Fat-tailed return distributions (Student's t).
+- A glide path: shifting return/volatility as retirement approaches.
+- Windows support notes.
