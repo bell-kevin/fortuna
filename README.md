@@ -1,5 +1,7 @@
 # fortuna
 
+https://montecarlo.you/
+
 **A Monte Carlo personal-finance forecaster. Full-stack Fortran.**
 
 `fortuna` answers the questions people actually lose sleep over — *will my money last?*, *when can I retire?*, *how much can I safely spend?* — by simulating tens of thousands of possible market futures in a few hundred milliseconds. It is one self-contained binary with three faces:
