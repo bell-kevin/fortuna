@@ -1,3 +1,5 @@
+<a name="readme-top"></a>
+
 # fortuna
 
 https://montecarlo.you/
@@ -155,3 +157,6 @@ Bug reports, portability patches (BSD/macOS socket constants would be a nice one
 ## License
 
 AGPL-3.0-or-later. If you run a modified `fortuna` as a network service for others, the AGPL's whole point is that they get the source too. See [LICENSE](LICENSE).
+
+<p align="right"><a href="#readme-top">back to top</a></p>
+
