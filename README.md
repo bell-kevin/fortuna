@@ -158,5 +158,7 @@ Bug reports, portability patches (BSD/macOS socket constants would be a nice one
 
 AGPL-3.0-or-later. If you run a modified `fortuna` as a network service for others, the AGPL's whole point is that they get the source too. See [LICENSE](LICENSE).
 
+https://montecarlo.you/
+
 <p align="right"><a href="#readme-top">back to top</a></p>
 
